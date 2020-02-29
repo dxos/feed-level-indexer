@@ -40,6 +40,7 @@
     "level": "^6.0.0",
     "level-live": "github:Frando/level-live#key-encodings",
     "pump": "^3.0.0",
+    "reachdown": "^1.0.0",
     "source-map-support": "^0.5.16",
     "subleveldown": "^4.1.4",
     "through2": "^3.0.1",

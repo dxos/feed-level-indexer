@@ -6,6 +6,7 @@ import { EventEmitter } from 'events';
 
 import through from 'through2';
 import sub from 'subleveldown';
+import reachdown from 'reachdown';
 
 import { AsyncInitializer } from './async-initializer';
 import { codec } from './codec';
@@ -15,6 +16,9 @@ export class FeedState extends EventEmitter {
     super();
 
     this._db = sub(db, 'feeds', { valueEncoding: codec });
+    this._prefix = reachdown(this._db, 'subleveldown').prefix;
+    this._db.on('put', (key, value) => db.emit('put-sublevel', key, value, this._prefix));
+
     this._feedsByInc = [];
     this._feedsByKey = new Map();
 

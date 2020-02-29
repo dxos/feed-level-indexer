@@ -68,14 +68,21 @@ test('basic', async () => {
 
   const createChatStream = () => indexer.subscribe([topic2, 'message.Chat']);
 
-  const waitForFiveChatMessages = waitForMessages(createChatStream(), (messages) => {
+  const waitForChatMessages = waitForMessages(createChatStream(), (messages) => {
     return messages.length === 5;
+  });
+
+  const waitForTopic1Messages = waitForMessages(indexer.subscribe([topic1]), messages => {
+    return messages.length === 3;
   });
 
   await append2({ type: 'message.Chat', msg: 4 });
 
-  const chatMessages = await waitForFiveChatMessages;
+  const chatMessages = await waitForChatMessages;
   expect(chatMessages.sort()).toEqual([0, 1, 2, 3, 4]);
+
+  const topic1Messages = await waitForTopic1Messages;
+  expect(topic1Messages.sort()).toEqual([0, 1, 2]);
 
   // We recreate the index
   indexer = createIndexer(levelmem(), fs);
@@ -95,4 +102,9 @@ test('basic', async () => {
   });
 
   expect(chessGameMessages.sort()).toEqual([0, 1, 2]);
+
+  const topic2Messages = await waitForMessages(indexer.subscribe([topic2]), (messages) => {
+    return messages.length === 7;
+  });
+  expect(topic2Messages.sort()).toEqual([0, 1, 2, 3, 3, 4, 4]);
 });

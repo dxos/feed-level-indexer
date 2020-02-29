@@ -53,31 +53,34 @@ export class FeedLevelIndexer extends EventEmitter {
     return this;
   }
 
-  subscribe (partitionName, options = {}) {
-    const partition = this.getPartition(partitionName);
-    if (!partition) throw new Error('partition not found', partitionName);
+  subscribe (prefix, options = {}) {
+    const partition = this.getPartition(prefix);
+    if (!partition) throw new Error('partition not found', prefix);
     return partition.createReadStream(Object.assign({}, options, { live: true }));
   }
 
-  getPartition (partitionName) {
-    if (!Array.isArray(partitionName)) {
-      partitionName = [partitionName];
+  getPartition (prefix) {
+    if (!Array.isArray(prefix)) {
+      prefix = [prefix];
     }
 
-    partitionName = partitionName.map(value => Buffer.isBuffer(value) ? value.toString('hex') : value).join('!');
+    prefix = prefix.map(value => Buffer.isBuffer(value) ? value.toString('hex') : value);
+
+    const prefixKey = prefix.join('!');
 
     let partition;
-    if (this._partitions.has(partitionName)) {
-      partition = this._partitions.get(partitionName);
+    if (this._partitions.has(prefixKey)) {
+      partition = this._partitions.get(prefixKey);
     } else {
       partition = new FeedPartition({
-        db: this._db,
-        name: partitionName,
+        db: prefix.length > 1 ? this.getPartition(prefix.slice(0, prefix.length - 1)).db : this._db,
+        prefix: prefix[prefix.length - 1],
         feedState: this._feedState,
         getMessage: this._source.get
       });
-      this._partitions.set(partitionName, partition);
+      this._partitions.set(prefixKey, partition);
     }
+
     return partition;
   }
 
@@ -87,12 +90,12 @@ export class FeedLevelIndexer extends EventEmitter {
     const buildPartition = through.obj((chunk, _, next) => {
       const { key, seq } = chunk;
 
-      const partitionName = this._indexBy(chunk);
-      if (!partitionName) {
+      const prefix = this._indexBy(chunk);
+      if (!prefix) {
         return next(null, chunk);
       }
 
-      const partition = this.getPartition(partitionName);
+      const partition = this.getPartition(prefix);
 
       partition.add(key, seq, err => {
         if (err) return next(err);
@@ -100,15 +103,20 @@ export class FeedLevelIndexer extends EventEmitter {
       });
     });
 
+    const indexed = through.obj((chunk, _, next) => {
+      this.emit('chunk-indexed', chunk);
+      next();
+    });
+
     this._stream = pump(
       this._source.stream(this._feedState),
       this._feedState.buildIncremental(),
       buildPartition,
       this._feedState.buildState(),
+      indexed,
       err => {
         this.emit('error', err);
       });
-    this._stream.on('data', data => this.emit('data', data));
   }
 
   _buildIndexBy (fields) {
@@ -129,30 +137,30 @@ export class FeedLevelIndexer extends EventEmitter {
       return data;
     };
 
-    const iterate = (data, partitionName) => {
+    const iterate = (data, prefix) => {
       for (let i = 0; i < fields.length; i++) {
         const value = getValue(data, fields[i]);
         if (value) {
-          partitionName[i] = value;
+          prefix[i] = value;
         }
       }
-      return partitionName;
+      return prefix;
     };
 
     return (chunk) => {
-      let partitionName = iterate(chunk.data, []);
+      let prefix = iterate(chunk.data, []);
 
       if (chunk.metadata) {
-        partitionName = iterate(chunk.metadata, partitionName);
+        prefix = iterate(chunk.metadata, prefix);
       }
 
-      partitionName = partitionName.filter(Boolean);
+      prefix = prefix.filter(Boolean);
 
-      if (partitionName.length !== fields.length) {
+      if (prefix.length !== fields.length) {
         return null;
       }
 
-      return partitionName;
+      return prefix;
     };
   }
 }
