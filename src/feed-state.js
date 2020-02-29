@@ -12,10 +12,10 @@ import { AsyncInitializer } from './async-initializer';
 import { codec } from './codec';
 
 export class FeedState extends EventEmitter {
-  constructor (db) {
+  constructor (db, prefix) {
     super();
 
-    this._db = sub(db, 'feeds', { valueEncoding: codec });
+    this._db = sub(db, prefix + '.feeds', { valueEncoding: codec });
     this._prefix = reachdown(this._db, 'subleveldown').prefix;
     this._db.on('put', (key, value) => db.emit('put-sublevel', key, value, this._prefix));
 

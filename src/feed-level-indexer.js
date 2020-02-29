@@ -17,21 +17,21 @@ export class FeedLevelIndexer extends EventEmitter {
   constructor (options = {}) {
     super();
 
-    const { db, indexBy, source } = options;
+    const { db, index, source } = options;
 
     assert(db && (typeof db === 'string' || typeof db.supports === 'object'), 'db is required');
-    assert(Array.isArray(indexBy) || ['string', 'function'].includes(typeof indexBy), 'indexBy is required');
+    assert(Array.isArray(index), 'index is required');
     assert(source, 'source is required');
     assert(typeof source.stream === 'function', 'source.stream is required');
     assert(typeof source.get === 'function', 'source.get is required');
 
     this._db = typeof db === 'string' ? level(db) : db;
-    this._indexBy = this._buildIndexBy(indexBy);
+    this._index = this._buildIndex(index);
     this._source = source;
     this._partitions = new Map();
     this._stream = null;
 
-    this._feedState = new FeedState(this._db);
+    this._feedState = new FeedState(this._db, index.join('.'));
     this._feedState.on('error', err => this.emit('error', err));
 
     this._initializer = new AsyncInitializer(() => this._initialize());
@@ -90,8 +90,8 @@ export class FeedLevelIndexer extends EventEmitter {
     const buildPartition = through.obj((chunk, _, next) => {
       const { key, seq } = chunk;
 
-      const prefix = this._indexBy(chunk);
-      if (!prefix) {
+      const prefix = this._index(chunk);
+      if (!prefix || prefix.length === 0) {
         return next(null, chunk);
       }
 
@@ -119,11 +119,7 @@ export class FeedLevelIndexer extends EventEmitter {
       });
   }
 
-  _buildIndexBy (fields) {
-    if (typeof fields === 'function') {
-      return (chunk) => fields(chunk);
-    }
-
+  _buildIndex (fields) {
     if (typeof fields === 'string') {
       fields = [fields];
     }
@@ -155,10 +151,6 @@ export class FeedLevelIndexer extends EventEmitter {
       }
 
       prefix = prefix.filter(Boolean);
-
-      if (prefix.length !== fields.length) {
-        return null;
-      }
 
       return prefix;
     };

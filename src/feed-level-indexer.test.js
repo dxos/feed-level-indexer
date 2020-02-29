@@ -9,7 +9,7 @@ import { FeedLevelIndexer } from './feed-level-indexer';
 
 const createIndexer = (db, fs) => new FeedLevelIndexer({
   db,
-  indexBy: ['topic', 'type'],
+  index: ['topic', 'type'],
   source: {
     stream (feedState) {
       return fs.createReadStream(descriptor => {
