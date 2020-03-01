@@ -1,3 +1,7 @@
+//
+// Copyright 2020 DxOS.
+//
+
 import ram from 'random-access-memory';
 import levelmem from 'level-mem';
 import pify from 'pify';
@@ -7,24 +11,33 @@ import { FeedStore } from '@dxos/feed-store';
 
 import { FeedLevelIndexer } from './feed-level-indexer';
 
-const createIndexer = (db, fs) => new FeedLevelIndexer({
-  db,
-  index: ['topic', 'type'],
-  source: {
-    stream (feedState) {
-      return fs.createReadStream(descriptor => {
-        const state = feedState.getByKey(descriptor.key) || { start: 0 };
-        return { live: true, start: state.start, feedStoreInfo: true };
-      });
-    },
-    async get (key, seq) {
-      const descriptor = fs.getDescriptorByDiscoveryKey(crypto.discoveryKey(key));
-      if (!descriptor) throw new Error('missing descriptor');
-      const feed = descriptor.opened ? descriptor.feed : await descriptor.open();
-      return pify(feed.get.bind(feed))(seq);
+const createIndexer = (db, fs) => {
+  const indexer = new FeedLevelIndexer({
+    db,
+    indexes: [
+      ['topic', 'type'],
+      ['type']
+    ],
+    source: {
+      stream (feedState) {
+        return fs.createReadStream(descriptor => {
+          const state = feedState.getByKey(descriptor.key) || { start: 0 };
+          return { live: true, start: state.start, feedStoreInfo: true };
+        });
+      },
+      async get (key, seq) {
+        const descriptor = fs.getDescriptorByDiscoveryKey(crypto.discoveryKey(key));
+        if (!descriptor) throw new Error('missing descriptor');
+        const feed = descriptor.opened ? descriptor.feed : await descriptor.open();
+        return pify(feed.get.bind(feed))(seq);
+      }
     }
-  }
-});
+  });
+
+  indexer.on('error', console.error);
+
+  return indexer;
+};
 
 const waitForMessages = (stream, condition) => {
   return new Promise(resolve => {
@@ -107,4 +120,9 @@ test('basic', async () => {
     return messages.length === 7;
   });
   expect(topic2Messages.sort()).toEqual([0, 1, 2, 3, 3, 4, 4]);
+
+  const allChessGameMessages = await waitForMessages(indexer.subscribe(['message.ChessGame']), (messages) => {
+    return messages.length === 5;
+  });
+  expect(allChessGameMessages.sort()).toEqual([0, 1, 2, 3, 4]);
 });

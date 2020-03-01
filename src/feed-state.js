@@ -2,32 +2,23 @@
 // Copyright 2020 DxOS.
 //
 
-import { EventEmitter } from 'events';
-
 import through from 'through2';
 import sub from 'subleveldown';
 import reachdown from 'reachdown';
 
-import { AsyncInitializer } from './async-initializer';
+import { Resource } from './resource';
 import { codec } from './codec';
 
-export class FeedState extends EventEmitter {
-  constructor (db, prefix) {
+export class FeedState extends Resource {
+  constructor (db) {
     super();
 
-    this._db = sub(db, prefix + '.feeds', { valueEncoding: codec });
+    this._db = sub(db, 'feed-state', { valueEncoding: codec });
     this._prefix = reachdown(this._db, 'subleveldown').prefix;
     this._db.on('put', (key, value) => db.emit('put-sublevel', key, value, this._prefix));
 
     this._feedsByInc = [];
     this._feedsByKey = new Map();
-
-    this._initializer = new AsyncInitializer(() => this._initialize());
-    this._initializer.on('error', err => this.emit('error', err));
-  }
-
-  async ready () {
-    return this._initializer.ready();
   }
 
   getByKey (key) {
@@ -68,7 +59,9 @@ export class FeedState extends EventEmitter {
     });
   }
 
-  async _initialize () {
+  async _open () {
+    await this._db.open();
+
     for await (const item of this._db.createReadStream()) {
       const { key, value: _value } = item;
 
@@ -81,5 +74,9 @@ export class FeedState extends EventEmitter {
       this._feedsByKey.set(key, value);
       this._feedsByInc[value.inc] = value;
     }
+  }
+
+  async _close () {
+    await this._db.close();
   }
 }

@@ -36,9 +36,11 @@
   },
   "dependencies": {
     "debug": "^4.1.1",
-    "events.once": "^2.0.2",
+    "end-of-stream": "^1.4.4",
     "level": "^6.0.0",
     "level-live": "github:Frando/level-live#key-encodings",
+    "nanoerror": "^1.0.0",
+    "nanoresource": "^1.3.0",
     "pump": "^3.0.0",
     "reachdown": "^1.0.0",
     "source-map-support": "^0.5.16",

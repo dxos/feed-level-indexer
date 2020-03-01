@@ -2,13 +2,13 @@
 // Copyright 2020 DxOS.
 //
 
-import { EventEmitter } from 'events';
-
 import through from 'through2';
 import pump from 'pump';
 import sub from 'subleveldown';
 import reachdown from 'reachdown';
+import eos from 'end-of-stream';
 
+import { Resource } from './resource';
 import { Live } from './live';
 import { codec } from './codec';
 
@@ -23,7 +23,7 @@ const partitionCodec = {
   }
 };
 
-export class FeedPartition extends EventEmitter {
+export class FeedPartition extends Resource {
   constructor (options = {}) {
     super();
 
@@ -47,19 +47,11 @@ export class FeedPartition extends EventEmitter {
     return this._prefix;
   }
 
-  get (key) {
-    return this._db.get(key);
-  }
-
   createReadStream (options = {}) {
     const { filter = () => true, live = false, ...levelOptions } = options;
 
-    const reader = live ? new Live(this._db, levelOptions) : this._db.createReadStream(levelOptions);
-
-    const throughFilter = through.obj(async (chunk, _, next) => {
+    const stream = through.obj(async (chunk, _, next) => {
       try {
-        await this._feedState.ready();
-
         const [inc, seq] = chunk.key;
         const { key } = this._feedState.getByInc(inc);
         const data = await this._getMessage(key, seq);
@@ -74,33 +66,53 @@ export class FeedPartition extends EventEmitter {
       }
     });
 
-    const stream = pump(reader, throughFilter, () => {
-      this._streams.delete(stream);
+    Promise.all([
+      this.open(),
+      this._feedState.open()
+    ]).then(() => {
+      const reader = live ? new Live(this._db, levelOptions) : this._db.createReadStream(levelOptions);
+
+      pump(reader, stream);
+
+      reader.on('sync', () => stream.emit('sync'));
+    }).catch((err) => {
+      stream.destroy(err);
     });
 
-    reader.on('sync', () => stream.emit('sync'));
+    eos(stream, () => {
+      this._streams.delete(stream);
+    });
 
     this._streams.add(stream);
     return stream;
   }
 
-  add (key, seq, cb) {
+  async add (key, seq) {
+    await this.open();
+
     const { inc } = this._feedState.getByKey(key);
     const dbKey = codec.encode([inc, seq]);
-    this._db.get(dbKey, err => {
-      if (err && err.notFound) {
-        this._db.put(dbKey, 1, cb);
-      } else {
-        cb(null);
+    try {
+      await this._db.get(dbKey);
+    } catch (err) {
+      if (err.notFound) {
+        return this._db.put(dbKey, 1);
       }
-    });
+    }
   }
 
-  destroy (err) {
-    this._streams.forEach(stream => {
+  async open () {
+    await this._db.open();
+  }
+
+  async close (err) {
+    await Promise.all(Array.from(this._streams.values()).forEach(stream => {
       if (!stream.destroyed) {
         stream.destroy(err);
+        return new Promise(resolve => eos(stream, () => resolve()));
       }
-    });
+    }));
+
+    await this._db.close();
   }
 }

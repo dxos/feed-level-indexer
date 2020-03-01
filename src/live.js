@@ -1,3 +1,7 @@
+//
+// Copyright 2020 DxOS.
+//
+
 import LevelLive from 'level-live';
 
 export class Live extends LevelLive {
