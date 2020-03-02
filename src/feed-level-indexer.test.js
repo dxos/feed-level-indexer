@@ -12,7 +12,7 @@ import { FeedStore } from '@dxos/feed-store';
 
 import { FeedLevelIndexer } from './feed-level-indexer';
 
-const createIndexer = (db, fs) => {
+const createIndexer = async (db, fs) => {
   const source = {
     stream (feedState) {
       return fs.createReadStream(descriptor => {
@@ -32,18 +32,18 @@ const createIndexer = (db, fs) => {
     .by('TopicType', ['topic', 'type'])
     .by('Odd', ['odd']);
 
-  indexer.open().catch(err => console.log(err));
+  await indexer.open();
 
   return indexer;
 };
 
-const waitForMessages = (stream, condition) => {
+const waitForMessages = (stream, condition, destroy = false) => {
   return new Promise(resolve => {
     const messages = [];
     stream.on('data', data => {
       messages.push(data.msg);
       if (condition(messages, data)) {
-        stream.destroy();
+        if (destroy) stream.destroy();
         resolve(messages);
       }
     });
@@ -76,21 +76,21 @@ test('basic', async () => {
     append(feed2, 'message.Chat', 3)
   ]);
 
-  const indexer = createIndexer(levelmem(), fs);
+  const indexer = await createIndexer(levelmem(), fs);
   indexer.on('error', err => console.log(err));
   indexer.on('index-error', err => console.log(err));
 
   const waitForChatMessages = waitForMessages(indexer.subscribe('TopicType', [topic2, 'message.Chat']), (messages) => {
     return messages.length === 5;
-  });
+  }, true);
 
-  const waitForTopic1Messages = waitForMessages(indexer.subscribe('TopicType', [topic1]), messages => {
+  const waitForTopic1Messages = waitForMessages(indexer.subscribe('TopicType', [topic1]), (messages) => {
     return messages.length === 3;
-  });
+  }, true);
 
-  const waitForOddMessages = waitForMessages(indexer.subscribe('Odd', [false]), messages => {
+  const waitForOddMessages = waitForMessages(indexer.subscribe('Odd', [false]), (messages) => {
     return messages.length === 6;
-  });
+  }, true);
 
   await append(feed2, 'message.Chat', 4);
 
@@ -113,7 +113,7 @@ const createSimpleIndexerSubscribe = async (db = levelmem()) => {
 
   await append(feed1, 'test', 0);
 
-  const indexer = createIndexer(db, fs);
+  const indexer = await createIndexer(db, fs);
 
   const stream = indexer.subscribe('TopicType', [topic1]);
   const messages = await waitForMessages(stream, (messages) => {
@@ -122,7 +122,7 @@ const createSimpleIndexerSubscribe = async (db = levelmem()) => {
 
   expect(messages).toEqual([0]);
 
-  return { indexer, stream };
+  return { indexer, stream, fs };
 };
 
 test('close indexer', async () => {
@@ -132,10 +132,24 @@ test('close indexer', async () => {
   indexer.on('error', onError);
 
   // We test close
+  const streamDestroyed = new Promise(resolve => eos(stream, () => resolve()));
   const toClose = indexer.close();
-  await new Promise(resolve => eos(stream, () => resolve()));
 
+  await streamDestroyed;
   await expect(toClose).resolves.toBeUndefined();
   expect(onError).toHaveBeenCalledWith(new Error('premature close'));
-  expect(indexer.open()).rejects.toThrow('Resource is closed');
+  await expect(indexer.open()).rejects.toThrow('Resource is closed');
+});
+
+test('close feedstore -> close indexer', async () => {
+  const { indexer, stream, fs } = await createSimpleIndexerSubscribe();
+
+  // We test close
+  const streamDestroyed = new Promise(resolve => eos(stream, () => resolve()));
+  const toClose = fs.close();
+
+  await streamDestroyed;
+  await expect(toClose).resolves.toBeUndefined();
+  expect(indexer.closed).toBe(true);
+  await expect(indexer.open()).rejects.toThrow('Resource is closed');
 });

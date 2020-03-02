@@ -5,7 +5,7 @@
 import assert from 'assert';
 
 import level from 'level';
-import pump from 'pump';
+import pumpify from 'pumpify';
 import through from 'through2';
 import eos from 'end-of-stream';
 
@@ -103,19 +103,21 @@ export class FeedLevelIndexer extends Resource {
       next();
     });
 
-    this._stream = pump(
+    this._stream = pumpify.obj(
       this._source.stream(this._feedState),
       this._feedState.buildIncremental(),
       buildPartitions,
       this._feedState.buildState(),
-      cleanup,
-      err => {
-        if (err) {
-          this.emit('error', err);
-        } else {
-          this.close().catch(err => this.emit('error', err));
-        }
-      });
+      cleanup
+    );
+
+    eos(this._stream, err => {
+      if (err) {
+        process.nextTick(() => this.emit('error', err));
+      }
+
+      this.close().catch(err => this.emit('error', err));
+    });
   }
 
   async _close (err) {
@@ -131,9 +133,13 @@ export class FeedLevelIndexer extends Resource {
   }
 
   async _destroyStream (err) {
-    if (this._stream && !this._stream.destroyed) {
+    return new Promise(resolve => {
+      if (this._stream.destroyed) {
+        return resolve();
+      }
+
+      eos(this._stream, () => resolve());
       this._stream.destroy(err);
-      await new Promise(resolve => eos(this._stream, () => resolve()));
-    }
+    });
   }
 }

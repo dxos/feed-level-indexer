@@ -3,7 +3,7 @@
 //
 
 import through from 'through2';
-import pump from 'pump';
+import pumpify from 'pumpify';
 import sub from 'subleveldown';
 import reachdown from 'reachdown';
 import eos from 'end-of-stream';
@@ -40,7 +40,12 @@ export class FeedLevelIndex extends Resource {
 
     prefix = this._encodePrefix(prefix);
 
-    const stream = through.obj(async (chunk, _, next) => {
+    const stream = pumpify.obj();
+
+    const readOptions = { ...levelOptions, gte: prefix, lte: prefix.slice(0, -1) + this._ceiling };
+    const reader = live ? new Live(this._db, readOptions) : this._db.createReadStream(readOptions);
+
+    const readFeedMessage = through.obj(async (chunk, _, next) => {
       try {
         const keys = chunk.key.split('!');
         const seq = keys[keys.length - 2];
@@ -62,11 +67,7 @@ export class FeedLevelIndex extends Resource {
       this.open(),
       this._feedState.open()
     ]).then(() => {
-      const readOptions = { ...levelOptions, gte: prefix, lte: prefix.slice(0, -1) + this._ceiling };
-      const reader = live ? new Live(this._db, readOptions) : this._db.createReadStream(readOptions);
-
-      pump(reader, stream);
-
+      stream.setPipeline(reader, readFeedMessage);
       reader.on('sync', () => stream.emit('sync'));
     }).catch((err) => {
       stream.destroy(err);
@@ -100,11 +101,15 @@ export class FeedLevelIndex extends Resource {
   }
 
   async close (err) {
-    await Promise.all(Array.from(this._streams.values()).map(stream => {
-      if (!stream.destroyed) {
+    return Promise.all(Array.from(this._streams.values()).map(stream => {
+      return new Promise(resolve => {
+        if (stream.destroyed) {
+          return resolve();
+        }
+
+        eos(stream, () => resolve());
         stream.destroy(err);
-        return new Promise(resolve => eos(stream, () => resolve()));
-      }
+      });
     }));
   }
 
