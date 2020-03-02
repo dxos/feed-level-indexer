@@ -9,14 +9,12 @@ import reachdown from 'reachdown';
 import { Resource } from './resource';
 import { codec } from './codec';
 
-export class FeedState extends Resource {
+export class FeedLevelState extends Resource {
   constructor (db) {
     super();
 
     this._db = sub(db, 'feed-state', { valueEncoding: codec });
     this._prefix = reachdown(this._db, 'subleveldown').prefix;
-    this._db.on('put', (key, value) => db.emit('put-sublevel', key, value, this._prefix));
-
     this._feedsByInc = [];
     this._feedsByKey = new Map();
   }

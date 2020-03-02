@@ -12,29 +12,29 @@ import { FeedStore } from '@dxos/feed-store';
 import { FeedLevelIndexer } from './feed-level-indexer';
 
 const createIndexer = (db, fs) => {
-  const indexer = new FeedLevelIndexer({
-    db,
-    indexes: {
-      byTopicType: ['topic', 'type'],
-      byOdd: ['odd']
+  const source = {
+    stream (feedState) {
+      return fs.createReadStream(descriptor => {
+        const state = feedState.getByKey(descriptor.key) || { start: 0 };
+        return { live: true, start: state.start, feedStoreInfo: true };
+      });
     },
-    source: {
-      stream (feedState) {
-        return fs.createReadStream(descriptor => {
-          const state = feedState.getByKey(descriptor.key) || { start: 0 };
-          return { live: true, start: state.start, feedStoreInfo: true };
-        });
-      },
-      async get (key, seq) {
-        const descriptor = fs.getDescriptorByDiscoveryKey(crypto.discoveryKey(key));
-        if (!descriptor) throw new Error('missing descriptor');
-        const feed = descriptor.opened ? descriptor.feed : await descriptor.open();
-        return pify(feed.get.bind(feed))(seq);
-      }
+    async get (key, seq) {
+      const descriptor = fs.getDescriptorByDiscoveryKey(crypto.discoveryKey(key));
+      if (!descriptor) throw new Error('missing descriptor');
+      const feed = descriptor.opened ? descriptor.feed : await descriptor.open();
+      return pify(feed.get.bind(feed))(seq);
     }
-  });
+  };
+
+  const indexer = new FeedLevelIndexer(db, source)
+    .by('TopicType', ['topic', 'type'])
+    .by('Odd', ['odd']);
 
   indexer.on('error', console.error);
+  indexer.on('index-error', err => console.log(err));
+
+  indexer.open().catch(err => console.error(err));
 
   return indexer;
 };
@@ -80,15 +80,15 @@ test('basic', async () => {
 
   const indexer = createIndexer(levelmem(), fs);
 
-  const waitForChatMessages = waitForMessages(indexer.subscribe('byTopicType', [topic2, 'message.Chat']), (messages) => {
+  const waitForChatMessages = waitForMessages(indexer.subscribe('TopicType', [topic2, 'message.Chat']), (messages) => {
     return messages.length === 5;
   });
 
-  const waitForTopic1Messages = waitForMessages(indexer.subscribe('byTopicType', [topic1]), messages => {
+  const waitForTopic1Messages = waitForMessages(indexer.subscribe('TopicType', [topic1]), messages => {
     return messages.length === 3;
   });
 
-  const waitForOddMessages = waitForMessages(indexer.subscribe('byOdd', [false]), messages => {
+  const waitForOddMessages = waitForMessages(indexer.subscribe('Odd', [false]), messages => {
     return messages.length === 6;
   });
 

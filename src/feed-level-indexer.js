@@ -10,85 +10,80 @@ import through from 'through2';
 import eos from 'end-of-stream';
 
 import { Resource } from './resource';
-import { FeedState } from './feed-state';
-import { FeedPartition } from './feed-partition';
+import { FeedLevelState } from './feed-level-state';
+import { FeedLevelIndex } from './feed-level-index';
 
 export class FeedLevelIndexer extends Resource {
-  constructor (options = {}) {
+  constructor (db, source) {
     super();
 
-    const { db, indexes, source } = options;
-
     assert(db && (typeof db === 'string' || typeof db.supports === 'object'), 'db is required');
-    assert(typeof indexes === 'object', 'indexes is required');
     assert(source, 'source is required');
     assert(typeof source.stream === 'function', 'source.stream is required');
     assert(typeof source.get === 'function', 'source.get is required');
 
     this._db = typeof db === 'string' ? level(db) : db;
-    this._indexes = indexes;
     this._source = source;
-    this._partitions = new Map();
+    this._indexes = new Map();
     this._stream = null;
 
-    this._initialize();
-  }
-
-  subscribe (indexName, prefix, options = {}) {
-    const partition = this.getPartition(indexName, prefix);
-    return partition.createReadStream(Object.assign({}, options, { live: true }));
-  }
-
-  getPartition (indexName, prefix) {
-    if (!this._indexes[indexName]) {
-      throw new Error('index not found');
-    }
-
-    if (!Array.isArray(prefix)) {
-      prefix = [prefix];
-    }
-
-    prefix = [indexName, ...prefix.map(value => Buffer.isBuffer(value) ? value.toString('hex') : value)];
-
-    return this._getPartition(prefix);
-  }
-
-  _initialize () {
-    this._prefixReducers = Object.keys(this._indexes).map(indexName => {
-      return { indexName, reducer: this._createPrefixReducer(this._indexes[indexName]) };
-    });
-
-    this._feedState = new FeedState(this._db);
+    this._feedState = new FeedLevelState(this._db);
     this._feedState.on('error', err => this.emit('error', err));
 
     this.on('error', (err) => {
       this.close(err).catch(err => console.error(err));
     });
+  }
 
-    this.open().catch(err => this.emit('error', err));
+  by (indexName, fields) {
+    if (this.opened || this.opening) {
+      throw new Error('index can only be defined before the opening');
+    }
+
+    if (this._indexes.has(indexName)) {
+      throw new Error(`index "${indexName}" already exists`);
+    }
+
+    this._indexes.set(indexName, new FeedLevelIndex({
+      db: this._db,
+      name: indexName,
+      fields,
+      feedState: this._feedState,
+      getMessage: this._source.get
+    }));
+
+    return this;
+  }
+
+  getIndex (indexName) {
+    const index = this._indexes.get(indexName);
+    if (index) {
+      return index;
+    }
+
+    throw new Error(`index "${indexName}" not found`);
+  }
+
+  subscribe (indexName, prefix, options = {}) {
+    const index = this.getIndex(indexName);
+    return index.createReadStream(prefix, Object.assign({}, options, { live: true }));
   }
 
   async _open () {
     await this._feedState.open();
 
     const buildPartitions = through.obj(async (chunk, _, next) => {
-      const { key, seq } = chunk;
-
-      try {
-        for await (const { indexName, reducer } of this._prefixReducers) {
-          const prefix = reducer(chunk);
-          if (prefix) {
-            const partition = this.getPartition(indexName, prefix);
-            await partition.add(key, seq);
-          } else {
-            this.emit('index-missing', indexName, chunk);
-          }
-        }
-
-        next(null, chunk);
-      } catch (err) {
-        process.nextTick(() => next(err));
-      }
+      Promise.all(Array.from(this._indexes.values()).map((index, indexName) => {
+        return index.add(chunk).catch(err => {
+          this.emit('index-error', err, indexName, chunk);
+        });
+      }))
+        .then(() => {
+          next(null, chunk);
+        })
+        .catch(err => {
+          process.nextTick(() => next(err));
+        });
     });
 
     const cleanup = through.obj((chunk, _, next) => {
@@ -118,79 +113,8 @@ export class FeedLevelIndexer extends Resource {
       await new Promise(resolve => eos(this._stream, () => resolve()));
     }
 
-    await Promise.all(this._partitions.map(partition => partition.close(err)));
+    await Promise.all(Array.from(this._indexes.values()).map(index => index.close(err)));
     await this._feedState.close();
-    this._partitions.clear();
-  }
-
-  _getPartition (prefix) {
-    if (this.closed || this.closing) {
-      throw new Error('indexer is closed');
-    }
-
-    const prefixKey = prefix.join('!');
-
-    let partition;
-    if (this._partitions.has(prefixKey)) {
-      partition = this._partitions.get(prefixKey);
-    } else {
-      partition = new FeedPartition({
-        db: prefix.length > 1 ? this._getPartition(prefix.slice(0, prefix.length - 1)).db : this._db,
-        prefix: prefix[prefix.length - 1],
-        feedState: this._feedState,
-        getMessage: this._source.get
-      });
-      this._partitions.set(prefixKey, partition);
-    }
-
-    return partition;
-  }
-
-  _createPrefixReducer (fields) {
-    if (typeof fields === 'string') {
-      fields = [fields];
-    }
-
-    fields = fields.map(field => [field.split('.')]);
-
-    const getValue = (data, field) => {
-      for (const prop of field) {
-        if (data === undefined) return data;
-        data = data[prop];
-      }
-      return data;
-    };
-
-    const iterate = (data, prefix, missing) => {
-      for (const [field, value] of prefix) {
-        if (value) {
-          continue;
-        }
-
-        const newValue = getValue(data, field);
-        if (newValue !== undefined) {
-          missing--;
-          prefix.set(field, newValue);
-        }
-      }
-      return missing;
-    };
-
-    return (chunk) => {
-      const prefix = new Map(fields);
-      let missing = prefix.size;
-
-      missing = iterate(chunk.data, prefix, missing);
-
-      if (missing && chunk.metadata) {
-        missing = iterate(chunk.metadata, prefix, missing);
-      }
-
-      if (missing) {
-        return null;
-      }
-
-      return Array.from(prefix.values());
-    };
+    this._indexes.clear();
   }
 }
