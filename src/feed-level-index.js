@@ -100,14 +100,12 @@ export class FeedLevelIndex extends Resource {
   }
 
   async close (err) {
-    await Promise.all(Array.from(this._streams.values()).forEach(stream => {
+    await Promise.all(Array.from(this._streams.values()).map(stream => {
       if (!stream.destroyed) {
         stream.destroy(err);
         return new Promise(resolve => eos(stream, () => resolve()));
       }
     }));
-
-    await this._db.close();
   }
 
   _encodePrefix (prefix) {

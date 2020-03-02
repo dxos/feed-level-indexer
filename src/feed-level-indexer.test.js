@@ -6,6 +6,7 @@ import ram from 'random-access-memory';
 import levelmem from 'level-mem';
 import pify from 'pify';
 import crypto from 'hypercore-crypto';
+import eos from 'end-of-stream';
 
 import { FeedStore } from '@dxos/feed-store';
 
@@ -31,10 +32,7 @@ const createIndexer = (db, fs) => {
     .by('TopicType', ['topic', 'type'])
     .by('Odd', ['odd']);
 
-  indexer.on('error', console.error);
-  indexer.on('index-error', err => console.log(err));
-
-  indexer.open().catch(err => console.error(err));
+  indexer.open().catch(err => console.log(err));
 
   return indexer;
 };
@@ -79,6 +77,8 @@ test('basic', async () => {
   ]);
 
   const indexer = createIndexer(levelmem(), fs);
+  indexer.on('error', err => console.log(err));
+  indexer.on('index-error', err => console.log(err));
 
   const waitForChatMessages = waitForMessages(indexer.subscribe('TopicType', [topic2, 'message.Chat']), (messages) => {
     return messages.length === 5;
@@ -102,4 +102,40 @@ test('basic', async () => {
 
   const oddMessages = await waitForOddMessages;
   expect(oddMessages.sort()).toEqual([0, 0, 2, 2, 4, 4]);
+});
+
+const createSimpleIndexerSubscribe = async (db = levelmem()) => {
+  const topic1 = Buffer.from('topic1');
+
+  const fs = await FeedStore.create(ram, { feedOptions: { valueEncoding: 'json' } });
+
+  const feed1 = await fs.openFeed('/feed1', { metadata: { topic: topic1 } });
+
+  await append(feed1, 'test', 0);
+
+  const indexer = createIndexer(db, fs);
+
+  const stream = indexer.subscribe('TopicType', [topic1]);
+  const messages = await waitForMessages(stream, (messages) => {
+    return messages.length === 1;
+  });
+
+  expect(messages).toEqual([0]);
+
+  return { indexer, stream };
+};
+
+test('close indexer', async () => {
+  const onError = jest.fn();
+
+  const { indexer, stream } = await createSimpleIndexerSubscribe();
+  indexer.on('error', onError);
+
+  // We test close
+  const toClose = indexer.close();
+  await new Promise(resolve => eos(stream, () => resolve()));
+
+  await expect(toClose).resolves.toBeUndefined();
+  expect(onError).toHaveBeenCalledWith(new Error('premature close'));
+  expect(indexer.open()).rejects.toThrow('Resource is closed');
 });

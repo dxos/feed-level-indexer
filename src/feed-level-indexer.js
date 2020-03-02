@@ -35,6 +35,10 @@ export class FeedLevelIndexer extends Resource {
     });
   }
 
+  get db () {
+    return this._db;
+  }
+
   by (indexName, fields) {
     if (this.opened || this.opening) {
       throw new Error('index can only be defined before the opening');
@@ -67,6 +71,13 @@ export class FeedLevelIndexer extends Resource {
   subscribe (indexName, prefix, options = {}) {
     const index = this.getIndex(indexName);
     return index.createReadStream(prefix, Object.assign({}, options, { live: true }));
+  }
+
+  async clear () {
+    await this._closeInternalDatabases();
+    await this._db.clear();
+    await this._db.close();
+    this._indexes.clear();
   }
 
   async _open () {
@@ -108,13 +119,21 @@ export class FeedLevelIndexer extends Resource {
   }
 
   async _close (err) {
+    await this._closeInternalDatabases(err);
+    await this._db.close();
+    this._indexes.clear();
+  }
+
+  async _closeInternalDatabases (err) {
+    await this._destroyStream(err);
+    await Promise.all(Array.from(this._indexes.values()).map(index => index.close(err)));
+    await this._feedState.close();
+  }
+
+  async _destroyStream (err) {
     if (this._stream && !this._stream.destroyed) {
       this._stream.destroy(err);
       await new Promise(resolve => eos(this._stream, () => resolve()));
     }
-
-    await Promise.all(Array.from(this._indexes.values()).map(index => index.close(err)));
-    await this._feedState.close();
-    this._indexes.clear();
   }
 }

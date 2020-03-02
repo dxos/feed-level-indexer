@@ -77,7 +77,5 @@ export class FeedLevelState extends Resource {
     }
   }
 
-  async _close () {
-    await this._db.close();
-  }
+  async _close () {}
 }
