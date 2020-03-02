@@ -41,7 +41,10 @@ export class FeedState extends Resource {
       const value = { key, start: 0, inc: this._feedsByKey.size };
       this._feedsByKey.set(keyHex, value);
       this._feedsByInc[value.inc] = value;
-      next(null, chunk);
+      this._db.put(keyHex, [value.inc, value.start], err => {
+        if (err) return next(err);
+        next(null, chunk);
+      });
     });
   }
 
