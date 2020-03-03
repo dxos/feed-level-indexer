@@ -23,14 +23,12 @@ export class LevelCacheSeq extends Resource {
     this._valuesBySeq = [];
     this._valuesByKey = new Map();
 
-    this._db.on('open', () => {
-      this.open().catch(err => process.nextTick(() => this.emit('error', err)));
-    });
-
     this._db.on('closed', () => {
       this._valuesBySeq = [];
       this._valuesByKey.clear();
     });
+
+    this.open().catch(err => process.nextTick(() => this.emit('error', err)));
   }
 
   get db () {
@@ -44,7 +42,9 @@ export class LevelCacheSeq extends Resource {
   /**
    * @async
    */
-  set (key, value) {
+  async set (key, value) {
+    await this.open();
+
     key = bufToStr(key);
     const oldValue = this.get(key);
     value = this._addValue(key, oldValue ? oldValue.seq : this._valuesByKey.size, value);
