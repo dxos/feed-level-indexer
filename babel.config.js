@@ -1,5 +1,5 @@
 //
-// Copyright 2019 DxOS.
+// Copyright 2020 DxOS.
 //
 
 module.exports = {

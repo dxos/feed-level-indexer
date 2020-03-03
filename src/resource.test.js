@@ -1,3 +1,7 @@
+//
+// Copyright 2020 DxOS.
+//
+
 import { Resource } from './resource';
 
 test('basic', async () => {
