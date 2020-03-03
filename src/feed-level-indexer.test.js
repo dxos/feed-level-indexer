@@ -16,7 +16,7 @@ const createIndexer = async (db, fs) => {
   const source = {
     stream (feedState) {
       return fs.createReadStream(descriptor => {
-        const state = feedState.getByKey(descriptor.key) || { start: 0 };
+        const state = feedState.get(descriptor.key) || { start: 0 };
         return { live: true, start: state.start, feedStoreInfo: true };
       });
     },
@@ -111,8 +111,8 @@ test('basic', async () => {
   expect(result).toEqual({
     key: feed1.key,
     seq: 0,
-    inc: 0,
     levelKey: '746f70696331!message.ChessGame!0!0!',
+    levelSeq: 0,
     data: { type: 'message.ChessGame', msg: 0, odd: false }
   });
 });

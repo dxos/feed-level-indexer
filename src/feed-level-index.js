@@ -49,13 +49,14 @@ export class FeedLevelIndex extends Resource {
       try {
         const keys = chunk.key.split('!');
         const seq = Number(keys[keys.length - 2]);
-        const inc = Number(keys[keys.length - 3]);
-        const { key } = this._feedState.getByInc(inc);
+        const levelSeq = Number(keys[keys.length - 3]);
+        let { key } = this._feedState.getBySeq(levelSeq);
+        key = Buffer.from(key, 'hex');
         const data = await this._getMessage(key, seq);
         const valid = await filter(data);
         if (valid) {
           if (feedLevelIndexInfo) {
-            next(null, { key, seq, inc, levelKey: chunk.key, data });
+            next(null, { key, seq, levelKey: chunk.key, levelSeq: seq, data });
           } else {
             next(null, data);
           }
@@ -89,8 +90,8 @@ export class FeedLevelIndex extends Resource {
     await this.open();
 
     const prefix = this._prefixReduce(chunk);
-    const { inc } = this._feedState.getByKey(chunk.key);
-    const dbKey = this._encodePrefix([...prefix, inc, chunk.seq]);
+    const { seq } = this._feedState.get(chunk.key);
+    const dbKey = this._encodePrefix([...prefix, seq, chunk.seq]);
     try {
       await this._db.get(dbKey);
     } catch (err) {
