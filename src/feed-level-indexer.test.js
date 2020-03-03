@@ -102,6 +102,19 @@ test('basic', async () => {
 
   const oddMessages = await waitForOddMessages;
   expect(oddMessages.sort()).toEqual([0, 0, 2, 2, 4, 4]);
+
+  const stream = indexer.subscribe('TopicType', [topic1], { feedLevelIndexInfo: true });
+  const result = await new Promise(resolve => stream.on('data', data => {
+    stream.destroy();
+    resolve(data);
+  }));
+  expect(result).toEqual({
+    key: feed1.key,
+    seq: 0,
+    inc: 0,
+    levelKey: '746f70696331!message.ChessGame!0!0!',
+    data: { type: 'message.ChessGame', msg: 0, odd: false }
+  });
 });
 
 const createSimpleIndexerSubscribe = async (db = levelmem()) => {

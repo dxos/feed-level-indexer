@@ -36,7 +36,7 @@ export class FeedLevelIndex extends Resource {
   }
 
   createReadStream (prefix, options = {}) {
-    const { filter = () => true, live = false, ...levelOptions } = options;
+    const { filter = () => true, live = false, feedLevelIndexInfo = false, ...levelOptions } = options;
 
     prefix = this._encodePrefix(prefix);
 
@@ -48,13 +48,17 @@ export class FeedLevelIndex extends Resource {
     const readFeedMessage = through.obj(async (chunk, _, next) => {
       try {
         const keys = chunk.key.split('!');
-        const seq = keys[keys.length - 2];
-        const inc = keys[keys.length - 3];
+        const seq = Number(keys[keys.length - 2]);
+        const inc = Number(keys[keys.length - 3]);
         const { key } = this._feedState.getByInc(inc);
         const data = await this._getMessage(key, seq);
-        const result = await filter(data);
-        if (result) {
-          next(null, data);
+        const valid = await filter(data);
+        if (valid) {
+          if (feedLevelIndexInfo) {
+            next(null, { key, seq, inc, levelKey: chunk.key, data });
+          } else {
+            next(null, data);
+          }
         } else {
           next();
         }
