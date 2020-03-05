@@ -8,6 +8,9 @@
 [![js-semistandard-style](https://img.shields.io/badge/code%20style-semistandard-brightgreen.svg?style=flat-square)](https://github.com/standard/semistandard)
 [![standard-readme compliant](https://img.shields.io/badge/readme%20style-standard-brightgreen.svg?style=flat-square)](https://github.com/RichardLitt/standard-readme)
 
+<p align="center">
+  <img src="https://user-images.githubusercontent.com/819446/76021965-00232580-5f05-11ea-9ff2-81a4c033cb36.jpg" alt="graph">
+</p>
 
 ## Install
 
