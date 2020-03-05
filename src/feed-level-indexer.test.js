@@ -14,10 +14,9 @@ import { FeedLevelIndexer } from './feed-level-indexer';
 
 const createIndexer = async (db, fs) => {
   const source = {
-    stream (feedState) {
+    stream (getFeedStart) {
       return fs.createReadStream(descriptor => {
-        const state = feedState.get(descriptor.key) || { start: 0 };
-        return { live: true, start: state.start, feedStoreInfo: true };
+        return { live: true, start: getFeedStart(descriptor.key), feedStoreInfo: true };
       });
     },
     async get (key, seq) {

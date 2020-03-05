@@ -33,6 +33,8 @@ export class FeedLevelIndexer extends Resource {
     this.on('error', (err) => {
       this.close(err).catch(err => console.error(err));
     });
+
+    this._getFeedStart = this._getFeedStart.bind(this);
   }
 
   get db () {
@@ -104,7 +106,7 @@ export class FeedLevelIndexer extends Resource {
     });
 
     this._stream = pumpify.obj(
-      this._source.stream(this._feedState),
+      this._source.stream(this._getFeedStart),
       this._feedState.buildIncremental(),
       buildPartitions,
       this._feedState.buildState(),
@@ -141,5 +143,11 @@ export class FeedLevelIndexer extends Resource {
       eos(this._stream, () => resolve());
       this._stream.destroy(err);
     });
+  }
+
+  _getFeedStart (key) {
+    const state = this._feedState.get(key);
+    if (state) return state.value.start;
+    return 0;
   }
 }

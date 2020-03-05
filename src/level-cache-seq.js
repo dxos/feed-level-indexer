@@ -47,14 +47,12 @@ export class LevelCacheSeq extends Resource {
 
     const keyStr = bufToStr(key);
     const oldValue = this.get(keyStr);
-    const valueEncoded = this._encode(key, value);
-    value = {
-      ...value,
+    const newValue = this._addValue(keyStr, {
+      value,
       key,
       seq: oldValue ? oldValue.seq : this._valuesByKey.size
-    };
-    this._addValue(keyStr, value);
-    return this._db.put(keyStr, [value.seq].concat(valueEncoded));
+    });
+    return this._db.put(keyStr, [newValue.seq].concat(this._encode(key, newValue.value)));
   }
 
   getBySeq (seq) {
@@ -72,10 +70,11 @@ export class LevelCacheSeq extends Resource {
       }
 
       const key = Buffer.from(keyStr, 'hex');
-      const valueDecoded = this._decode(key, value.slice(1));
-      valueDecoded.key = key;
-      valueDecoded.seq = value[0];
-      this._addValue(keyStr, valueDecoded);
+      this._addValue(keyStr, {
+        value: this._decode(key, value.slice(1)),
+        key,
+        seq: value[0]
+      });
     }
   }
 

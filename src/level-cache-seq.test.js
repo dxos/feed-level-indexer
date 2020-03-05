@@ -27,10 +27,10 @@ test('cache basic', async () => {
   await cache.set(key1, { odd: 0 });
   await cache.set(key2, { odd: 1 });
 
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, odd: 0 });
-  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, odd: 1 });
+  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 0 } });
+  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, value: { odd: 1 } });
   await cache.set(key1, { odd: 1 });
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, odd: 1 });
+  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 1 } });
 
   await cache.db.close();
 
@@ -47,6 +47,6 @@ test('cache basic', async () => {
 
   await cache.open();
 
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, odd: 1 });
-  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, odd: 1 });
+  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 1 } });
+  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, value: { odd: 1 } });
 });
