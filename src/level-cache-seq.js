@@ -45,10 +45,16 @@ export class LevelCacheSeq extends Resource {
   async set (key, value) {
     await this.open();
 
-    key = bufToStr(key);
-    const oldValue = this.get(key);
-    value = this._addValue(key, oldValue ? oldValue.seq : this._valuesByKey.size, value);
-    return this._db.put(key, [value.seq, ...this._encode(key, value)]);
+    const keyStr = bufToStr(key);
+    const oldValue = this.get(keyStr);
+    const valueEncoded = this._encode(key, value);
+    value = {
+      ...value,
+      key,
+      seq: oldValue ? oldValue.seq : this._valuesByKey.size
+    };
+    this._addValue(keyStr, value);
+    return this._db.put(keyStr, [value.seq].concat(valueEncoded));
   }
 
   getBySeq (seq) {
@@ -59,21 +65,23 @@ export class LevelCacheSeq extends Resource {
     await this._db.open();
 
     for await (const item of this._db.createReadStream()) {
-      const { key, value } = item;
+      const { key: keyStr, value } = item;
 
       if (value[0] === undefined) {
         throw new Error('missing seq number');
       }
 
-      const [seq, ..._value] = value;
-      this._addValue(key, seq, this._decode(key, _value));
+      const key = Buffer.from(keyStr, 'hex');
+      const valueDecoded = this._decode(key, value.slice(1));
+      valueDecoded.key = key;
+      valueDecoded.seq = value[0];
+      this._addValue(keyStr, valueDecoded);
     }
   }
 
-  _addValue (key, seq, value) {
-    value = { ...value, key, seq };
-    this._valuesByKey.set(key, value);
-    this._valuesBySeq[seq] = value;
+  _addValue (keyStr, value) {
+    this._valuesByKey.set(keyStr, value);
+    this._valuesBySeq[value.seq] = value;
     return value;
   }
 

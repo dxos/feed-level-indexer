@@ -50,8 +50,7 @@ export class FeedLevelIndex extends Resource {
         const keys = chunk.key.split('!');
         const seq = Number(keys[keys.length - 2]);
         const levelSeq = Number(keys[keys.length - 3]);
-        let { key } = this._feedState.getBySeq(levelSeq);
-        key = Buffer.from(key, 'hex');
+        const { key } = this._feedState.getBySeq(levelSeq);
         const data = await this._getMessage(key, seq);
         const valid = await filter(data);
         if (valid) {
