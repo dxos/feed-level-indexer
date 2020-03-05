@@ -1,6 +1,6 @@
 {
   "name": "@dxos/feed-level-indexer",
-  "version": "1.0.0-beta.9",
+  "version": "1.0.0-beta.10",
   "description": "Index messages into a leveldb through multiple hypercore feeds.",
   "homepage": "https://github.com/dxos/feed-level-indexer#readme",
   "bugs": {
