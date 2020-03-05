@@ -90,7 +90,7 @@ export class FeedLevelIndex extends Resource {
 
     const prefix = this._prefixReduce(chunk);
     const { seq } = this._feedState.get(chunk.key);
-    const dbKey = this._encodePrefix([...prefix, seq, chunk.seq]);
+    const dbKey = this._encodePrefix(prefix.concat([seq, chunk.seq]));
     try {
       await this._db.get(dbKey);
     } catch (err) {
@@ -118,7 +118,7 @@ export class FeedLevelIndex extends Resource {
   }
 
   _encodePrefix (prefix) {
-    return prefix.map(value => Buffer.isBuffer(value) ? value.toString('hex') : value).join(this._separator) + this._separator;
+    return prefix.filter(value => (value !== undefined && value !== null)).map(value => Buffer.isBuffer(value) ? value.toString('hex') : value).join(this._separator) + this._separator;
   }
 
   _createPrefixReducer (fields) {

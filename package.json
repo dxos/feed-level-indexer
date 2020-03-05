@@ -26,7 +26,8 @@
     "lint": "semistandard 'src/**/*.js'",
     "prepublishOnly": "npm run build && npm run test",
     "test": "jest --verbose --passWithNoTests src",
-    "posttest": "npm run lint"
+    "posttest": "npm run lint",
+    "benchmark": "node benchmark"
   },
   "browserslist": [
     "> 5%"
@@ -59,6 +60,7 @@
     "babel-jest": "^25.1.0",
     "babel-plugin-add-module-exports": "^1.0.2",
     "babel-plugin-inline-import": "^3.0.0",
+    "benchmarkify": "^2.1.2",
     "coveralls": "^3.0.9",
     "cpy-cli": "^3.1.0",
     "del-cli": "^3.0.0",
