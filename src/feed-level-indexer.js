@@ -4,7 +4,6 @@
 
 import assert from 'assert';
 
-import level from 'level';
 import pumpify from 'pumpify';
 import through from 'through2';
 import eos from 'end-of-stream';
@@ -17,12 +16,12 @@ export class FeedLevelIndexer extends Resource {
   constructor (db, source) {
     super();
 
-    assert(db && (typeof db === 'string' || typeof db.supports === 'object'), 'db is required');
+    assert(db && db.supports, 'db is required and must be a compatible levelup database');
     assert(source, 'source is required');
     assert(typeof source.stream === 'function', 'source.stream is required');
     assert(typeof source.get === 'function', 'source.get is required');
 
-    this._db = typeof db === 'string' ? level(db) : db;
+    this._db = db;
     this._source = source;
     this._indexes = new Map();
     this._stream = null;
