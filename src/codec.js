@@ -17,7 +17,7 @@ export const codec = {
     let offset = 0;
     for (const num of value) {
       buff = varint.encode(num, buff, offset);
-      offset = varint.encode.bytes;
+      offset = offset + varint.encode.bytes;
     }
     return buff;
   },
@@ -28,8 +28,8 @@ export const codec = {
     let offset = 0;
     while (len > 0) {
       result.push(varint.decode(buff, offset));
-      offset = varint.decode.bytes;
-      len = len - offset;
+      offset = offset + varint.decode.bytes;
+      len = len - varint.decode.bytes;
     }
     return result;
   }
