@@ -28,8 +28,8 @@ const createIndexer = async (db, fs) => {
   };
 
   const indexer = new FeedLevelIndexer(db, source)
-    .by('TopicType', ['topic', 'type'])
-    .by('Odd', ['odd']);
+    .by('TopicType', ({ data, metadata, seq }, state) => [metadata.topic, data.type, state.seq, seq])
+    .by('Odd', ['odd', 'id']);
 
   await indexer.open();
 
@@ -50,7 +50,7 @@ const waitForMessages = (stream, condition, destroy = false) => {
 };
 
 const append = (feed, type, msg) => {
-  return pify(feed.append.bind(feed))({ type, msg, odd: !!(msg % 2) });
+  return pify(feed.append.bind(feed))({ type, id: crypto.randomBytes(32).toString('hex'), msg, odd: !!(msg % 2) });
 };
 
 test('basic', async () => {
@@ -110,9 +110,9 @@ test('basic', async () => {
   expect(result).toEqual({
     key: feed1.key,
     seq: 0,
-    levelKey: '746f70696331!message.ChessGame!0!0!',
+    levelKey: Buffer.from('!topic1!message.ChessGame!0!0!'),
     levelSeq: 0,
-    data: { type: 'message.ChessGame', msg: 0, odd: false }
+    data: { type: 'message.ChessGame', id: result.data.id, msg: 0, odd: false }
   });
 });
 

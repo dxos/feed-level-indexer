@@ -75,7 +75,7 @@ const createIndexer = async (fs) => {
   };
 
   const indexer = new FeedLevelIndexer(level(`${DIRECTORY}/db`), source)
-    .by('TopicType', ['topic', 'type']);
+    .by('TopicType', ({ data, metadata, seq }, state) => [metadata.topic, data.type, state.seq, seq]);
 
   indexer.on('error', err => console.error(err));
 

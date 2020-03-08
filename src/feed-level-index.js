@@ -5,57 +5,82 @@
 import through from 'through2';
 import pumpify from 'pumpify';
 import sub from 'subleveldown';
-import reachdown from 'reachdown';
 import eos from 'end-of-stream';
 import Live from 'level-live';
 
 import { Resource } from './resource';
+import { codec } from './codec';
+
+export const defaultKeyReducer = (fields) => {
+  fields = fields.map(field => [field.split('.')]);
+
+  const getValue = (data, field) => {
+    for (const prop of field) {
+      if (data === undefined) return data;
+      data = data[prop];
+    }
+    return data;
+  };
+
+  return (chunk) => {
+    const { data } = chunk;
+    const key = [];
+
+    for (const field of fields) {
+      const value = getValue(data, field);
+      if (value === undefined || value === null) {
+        throw new Error('missing field values to index');
+      }
+      key.push(value);
+    }
+
+    return key;
+  };
+};
 
 export class FeedLevelIndex extends Resource {
   constructor (options = {}) {
     super();
 
-    const { db, name, fields, feedState, getMessage } = options;
+    const { db, name, keyReducer, generateId, feedState, getMessage } = options;
 
-    this._db = sub(db, name);
-    this._prefix = reachdown(this._db, 'subleveldown').prefix;
-    this._prefixReduce = this._createPrefixReducer(fields);
+    this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: codec });
+    this._keyReduce = Array.isArray(keyReducer) ? defaultKeyReducer(keyReducer) : keyReducer;
+    this._generateId = generateId;
     this._feedState = feedState;
     this._getMessage = (key, seq) => getMessage(key, seq);
     this._streams = new Set();
     this._separator = '!';
+    this._separatorBuf = Buffer.from(this._separator);
     this._ceiling = String.fromCharCode(this._separator.charCodeAt(0) + 1);
+    this._ceilingBuf = Buffer.from(this._ceiling);
   }
 
   get db () {
     return this._db;
   }
 
-  get prefix () {
-    return this._prefix;
-  }
-
-  createReadStream (prefix, options = {}) {
+  createReadStream (levelKey, options = {}) {
     const { filter = () => true, live = false, feedLevelIndexInfo = false, ...levelOptions } = options;
 
-    prefix = this._encodePrefix(prefix);
+    const gte = this._encodeKey(levelKey);
+    const sliceBuf = gte.slice(0, -1);
+    const lte = Buffer.concat([sliceBuf, this._ceilingBuf], sliceBuf.length + this._ceilingBuf.length);
 
     const stream = pumpify.obj();
 
-    const readOptions = { ...levelOptions, gte: prefix, lte: prefix.slice(0, -1) + this._ceiling };
+    const readOptions = { ...levelOptions, gte, lte };
     const reader = live ? new Live(this._db, readOptions) : this._db.createReadStream(readOptions);
 
     const readFeedMessage = through.obj(async (chunk, _, next) => {
       try {
-        const keys = chunk.key.split('!');
-        const seq = Number(keys[keys.length - 2]);
-        const levelSeq = Number(keys[keys.length - 3]);
+        const [levelSeq, seq] = chunk.value;
         const { key } = this._feedState.getBySeq(levelSeq);
         const data = await this._getMessage(key, seq);
         const valid = await filter(data);
         if (valid) {
           if (feedLevelIndexInfo) {
-            next(null, { key, seq, levelKey: chunk.key, levelSeq: seq, data });
+            next(null, { key, seq, levelKey: chunk.key, levelSeq, data });
           } else {
             next(null, data);
           }
@@ -87,15 +112,17 @@ export class FeedLevelIndex extends Resource {
 
   async add (chunk) {
     await this.open();
+    const { key, seq } = chunk;
 
-    const prefix = this._prefixReduce(chunk);
-    const { seq } = this._feedState.get(chunk.key);
-    const dbKey = this._encodePrefix(prefix.concat([seq, chunk.seq]));
+    const state = this._feedState.get(key);
+    let dbKey = this._keyReduce(chunk, state);
+    dbKey = this._encodeKey(dbKey);
+
     try {
       await this._db.get(dbKey);
     } catch (err) {
       if (err.notFound) {
-        return this._db.put(dbKey, '');
+        return this._db.put(dbKey, [state.seq, seq]);
       }
     }
   }
@@ -117,55 +144,34 @@ export class FeedLevelIndex extends Resource {
     }));
   }
 
-  _encodePrefix (prefix) {
-    return prefix.filter(value => (value !== undefined && value !== null)).map(value => Buffer.isBuffer(value) ? value.toString('hex') : value).join(this._separator) + this._separator;
-  }
+  _encodeKey (levelKey) {
+    // TODO: Removed extra separator. Solution for now until subleveldown fix buffer keys issue.
+    const prefix = [this._separatorBuf];
+    let len = 1;
 
-  _createPrefixReducer (fields) {
-    if (typeof fields === 'string') {
-      fields = [fields];
+    for (let value of levelKey) {
+      if (value === undefined || value === null) {
+        throw new Error('the levelKey cannot contain null or undefined values');
+      }
+
+      const isBuffer = Buffer.isBuffer(value);
+
+      if (Array.isArray(value) || (typeof value === 'object' && !isBuffer)) {
+        throw new Error('the levelKey cannot contain array or object values');
+      }
+
+      if (!isBuffer) {
+        if (typeof value === 'boolean') {
+          value = value ? 't' : 'f';
+        }
+        value = Buffer.from(typeof value === 'string' ? value : String(value));
+      }
+
+      prefix.push(value);
+      prefix.push(this._separatorBuf);
+      len += value.length + this._separatorBuf.length;
     }
 
-    fields = fields.map(field => [field.split('.')]);
-
-    const getValue = (data, field) => {
-      for (const prop of field) {
-        if (data === undefined) return data;
-        data = data[prop];
-      }
-      return data;
-    };
-
-    const iterate = (data, prefix, missing) => {
-      for (const [field, value] of prefix) {
-        if (value) {
-          continue;
-        }
-
-        const newValue = getValue(data, field);
-        if (newValue !== undefined) {
-          missing--;
-          prefix.set(field, newValue);
-        }
-      }
-      return missing;
-    };
-
-    return (chunk) => {
-      const prefix = new Map(fields);
-      let missing = prefix.size;
-
-      missing = iterate(chunk.data, prefix, missing);
-
-      if (missing && chunk.metadata) {
-        missing = iterate(chunk.metadata, prefix, missing);
-      }
-
-      if (missing) {
-        throw new Error('missing field values to get the prefix');
-      }
-
-      return Array.from(prefix.values());
-    };
+    return Buffer.concat(prefix, len);
   }
 }

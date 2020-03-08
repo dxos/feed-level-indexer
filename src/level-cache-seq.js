@@ -3,19 +3,19 @@
 //
 
 import sub from 'subleveldown';
-import reachdown from 'reachdown';
 
 import { Resource } from './resource';
 import { codec } from './codec';
 
 const bufToStr = buf => Buffer.isBuffer(buf) ? buf.toString('hex') : buf;
 
+const SEP = Buffer.from('!');
+
 export class LevelCacheSeq extends Resource {
   constructor (db, name, options = {}) {
     super();
 
-    this._db = sub(db, name, { valueEncoding: codec });
-    this._prefix = reachdown(this._db, 'subleveldown').prefix;
+    this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: codec });
 
     if (options.encode) this._encode = options.encode;
     if (options.decode) this._decode = options.decode;
@@ -52,7 +52,9 @@ export class LevelCacheSeq extends Resource {
       key,
       seq: oldValue ? oldValue.seq : this._valuesByKey.size
     });
-    return this._db.put(keyStr, [newValue.seq].concat(this._encode(key, newValue.value)));
+
+    // TODO: Removed extra separator. Solution for now until subleveldown fix buffer keys issue.
+    return this._db.put(Buffer.concat([SEP, key, SEP], key.length + 2), [newValue.seq].concat(this._encode(key, newValue.value)));
   }
 
   getBySeq (seq) {
@@ -63,14 +65,16 @@ export class LevelCacheSeq extends Resource {
     await this._db.open();
 
     for await (const item of this._db.createReadStream()) {
-      const { key: keyStr, value } = item;
+      const { value } = item;
+      let { key } = item;
+      // TODO: Removed. Solution for now until subleveldown fix buffer keys issue.
+      key = key.slice(1, key.length - 1);
 
       if (value[0] === undefined) {
         throw new Error('missing seq number');
       }
 
-      const key = Buffer.from(keyStr, 'hex');
-      this._addValue(keyStr, {
+      this._addValue(key.toString('hex'), {
         value: this._decode(key, value.slice(1)),
         key,
         seq: value[0]

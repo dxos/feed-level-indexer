@@ -40,7 +40,7 @@ export class FeedLevelIndexer extends Resource {
     return this._db;
   }
 
-  by (indexName, fields) {
+  by (indexName, keyReducer, generateId = false) {
     if (this.opened || this.opening) {
       throw new Error('index can only be defined before the opening');
     }
@@ -52,7 +52,8 @@ export class FeedLevelIndexer extends Resource {
     this._indexes.set(indexName, new FeedLevelIndex({
       db: this._db,
       name: indexName,
-      fields,
+      keyReducer,
+      generateId,
       feedState: this._feedState,
       getMessage: this._source.get
     }));
