@@ -2,6 +2,7 @@
 // Copyright 2020 DxOS.
 //
 
+import crypto from 'crypto';
 import levelmem from 'level-mem';
 
 import { LevelCacheSeq } from './level-cache-seq';
@@ -10,43 +11,47 @@ test('cache basic', async () => {
   const db = levelmem();
   let cache = new LevelCacheSeq(db, 'cache', {
     encode (key, value) {
-      return [value.odd];
+      return [value.foo];
     },
     decode (key, value) {
       return {
-        odd: value[0]
+        foo: value[0]
       };
     }
   });
 
-  const key1 = Buffer.from('key1');
-  const key2 = Buffer.from('key2');
+  const keys = [...Array(30).keys()].map(() => crypto.randomBytes(32));
 
-  expect(cache.get(key1)).toBeUndefined();
+  expect.assertions(keys.length * 4);
 
-  await cache.set(key1, { odd: 0 });
-  await cache.set(key2, { odd: 1 });
-
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 0 } });
-  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, value: { odd: 1 } });
-  await cache.set(key1, { odd: 1 });
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 1 } });
+  let seq = 0;
+  for await (const key of keys) {
+    expect(cache.get(key)).toBeUndefined();
+    await cache.set(key, { foo: 0 });
+    expect(cache.get(key)).toEqual({ key, seq, value: { foo: 0 } });
+    await cache.set(key, { foo: 1 });
+    expect(cache.get(key)).toEqual({ key, seq, value: { foo: 1 } });
+    seq++;
+  }
 
   await cache.db.close();
 
   cache = new LevelCacheSeq(db, 'cache', {
     encode (key, value) {
-      return [value.odd];
+      return [value.foo];
     },
     decode (key, value) {
       return {
-        odd: value[0]
+        foo: value[0]
       };
     }
   });
 
   await cache.open();
 
-  expect(cache.get(key1)).toEqual({ key: key1, seq: 0, value: { odd: 1 } });
-  expect(cache.get(key2)).toEqual({ key: key2, seq: 1, value: { odd: 1 } });
+  seq = 0;
+  for (const key of keys) {
+    expect(cache.get(key)).toEqual({ key, seq, value: { foo: 1 } });
+    seq++;
+  }
 });
