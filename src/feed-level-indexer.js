@@ -7,12 +7,12 @@ import assert from 'assert';
 import pumpify from 'pumpify';
 import through from 'through2';
 import eos from 'end-of-stream';
+import { NanoresourcePromise } from 'nanoresource-promise/emitter';
 
-import { Resource } from './resource';
 import { FeedLevelState } from './feed-level-state';
 import { FeedLevelIndex } from './feed-level-index';
 
-export class FeedLevelIndexer extends Resource {
+export class FeedLevelIndexer extends NanoresourcePromise {
   constructor (db, source) {
     super();
 
@@ -40,7 +40,7 @@ export class FeedLevelIndexer extends Resource {
     return this._db;
   }
 
-  by (indexName, keyReducer, generateId = false) {
+  by (indexName, keyReducer) {
     if (this.opened || this.opening) {
       throw new Error('index can only be defined before the opening');
     }
@@ -53,7 +53,6 @@ export class FeedLevelIndexer extends Resource {
       db: this._db,
       name: indexName,
       keyReducer,
-      generateId,
       feedState: this._feedState,
       getMessage: this._source.get
     }));

@@ -3,15 +3,15 @@
 //
 
 import sub from 'subleveldown';
+import { NanoresourcePromise } from 'nanoresource-promise/emitter';
 
-import { Resource } from './resource';
 import { codec } from './codec';
 
 const bufToStr = buf => Buffer.isBuffer(buf) ? buf.toString('hex') : buf;
 
 const SEP = Buffer.from('!');
 
-export class LevelCacheSeq extends Resource {
+export class LevelCacheSeq extends NanoresourcePromise {
   constructor (db, name, options = {}) {
     super();
 

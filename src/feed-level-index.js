@@ -7,8 +7,8 @@ import pumpify from 'pumpify';
 import sub from 'subleveldown';
 import eos from 'end-of-stream';
 import Live from 'level-live';
+import { NanoresourcePromise } from 'nanoresource-promise/emitter';
 
-import { Resource } from './resource';
 import { codec } from './codec';
 
 export const defaultKeyReducer = (fields) => {
@@ -38,15 +38,14 @@ export const defaultKeyReducer = (fields) => {
   };
 };
 
-export class FeedLevelIndex extends Resource {
+export class FeedLevelIndex extends NanoresourcePromise {
   constructor (options = {}) {
     super();
 
-    const { db, name, keyReducer, generateId, feedState, getMessage } = options;
+    const { db, name, keyReducer, feedState, getMessage } = options;
 
     this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: codec });
     this._keyReduce = Array.isArray(keyReducer) ? defaultKeyReducer(keyReducer) : keyReducer;
-    this._generateId = generateId;
     this._feedState = feedState;
     this._getMessage = (key, seq) => getMessage(key, seq);
     this._streams = new Set();
