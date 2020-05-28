@@ -114,10 +114,11 @@ export class FeedLevelIndex extends NanoresourcePromise {
     const { key, seq } = chunk;
 
     const state = this._feedState.get(key);
-    let dbKey = this._keyReduce(chunk, state);
-    dbKey = this._encodeKey(dbKey);
 
+    let dbKey = null;
     try {
+      dbKey = this._keyReduce(chunk, state);
+      dbKey = this._encodeKey(dbKey);
       await this._db.get(dbKey);
     } catch (err) {
       if (err.notFound) {
