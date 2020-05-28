@@ -39,6 +39,10 @@ export class LevelCacheSeq extends NanoresourcePromise {
     return this._db;
   }
 
+  get valuesByKey () {
+    return this._valuesByKey;
+  }
+
   get (key) {
     return this._valuesByKey.get(bufToStr(key));
   }

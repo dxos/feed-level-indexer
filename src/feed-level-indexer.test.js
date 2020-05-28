@@ -79,10 +79,8 @@ test('basic', async () => {
   indexer.on('error', err => console.log(err));
   indexer.on('index-error', err => console.log(err));
 
-  const synced = jest.fn();
-
   const chatStream = indexer.subscribe('TopicType', [topic2, 'message.Chat']);
-  chatStream.on('synced', synced);
+  const waitForSync = new Promise(resolve => chatStream.once('synced', resolve));
 
   const waitForChatMessages = waitForMessages(chatStream, (messages) => {
     return messages.length === 5;
@@ -100,7 +98,7 @@ test('basic', async () => {
 
   const chatMessages = await waitForChatMessages;
   expect(chatMessages.sort()).toEqual([0, 1, 2, 3, 4]);
-  expect(synced).toBeCalledTimes(1);
+  expect(waitForSync).resolves.toBeUndefined();
 
   const topic1Messages = await waitForTopic1Messages;
   expect(topic1Messages.sort()).toEqual([0, 1, 2]);
