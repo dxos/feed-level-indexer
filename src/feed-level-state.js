@@ -12,11 +12,12 @@ export class FeedLevelState extends LevelCacheSeq {
 
     this._feedStream = null;
     this._feedStoreSyncState = null;
+    this._synced = false;
     this._waitingFeedsSync = new Set();
   }
 
   get synced () {
-    return !this._feedStoreSyncState || this._waitingFeedsSync.size === 0;
+    return this._synced;
   }
 
   buildIncremental () {
@@ -49,9 +50,12 @@ export class FeedLevelState extends LevelCacheSeq {
         });
 
         if (this._waitingFeedsSync.size === 0) {
+          this._synced = true;
           process.nextTick(() => this.emit('synced'));
         }
       });
+    } else {
+      this._synced = true;
     }
 
     return through.obj((chunk, _, next) => {
@@ -69,6 +73,7 @@ export class FeedLevelState extends LevelCacheSeq {
           if ((feedStateSeq !== undefined) && (seq >= feedStateSeq)) {
             this._waitingFeedsSync.delete(strKey);
             if (this._waitingFeedsSync.size === 0) {
+              this._synced = true;
               process.nextTick(() => this.emit('synced'));
             }
           }

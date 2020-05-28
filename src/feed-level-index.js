@@ -27,10 +27,12 @@ export const defaultKeyReducer = (fields) => {
     const key = [];
 
     for (const field of fields) {
-      const value = getValue(data, field);
+      let value = getValue(data, field);
+
       if (value === undefined || value === null) {
-        throw new Error('missing field values to index');
+        value = '';
       }
+
       key.push(value);
     }
 
@@ -159,19 +161,24 @@ export class FeedLevelIndex extends NanoresourcePromise {
 
     for (let value of levelKey) {
       if (value === undefined || value === null) {
-        throw new Error('the levelKey cannot contain null or undefined values');
+        value = Buffer.from('');
       }
 
       const isBuffer = Buffer.isBuffer(value);
 
-      if (Array.isArray(value) || (typeof value === 'object' && !isBuffer)) {
-        throw new Error('the levelKey cannot contain array or object values');
+      if (Array.isArray(value)) {
+        value = Buffer.from(value.map(v => JSON.stringify(v)).join(','));
+      }
+
+      if (typeof value === 'object' && !isBuffer) {
+        value = Buffer.from(JSON.stringify(value));
       }
 
       if (!isBuffer) {
         if (typeof value === 'boolean') {
           value = value ? 't' : 'f';
         }
+
         value = Buffer.from(typeof value === 'string' ? value : String(value));
       }
 
