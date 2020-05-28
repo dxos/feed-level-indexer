@@ -106,11 +106,14 @@ export class FeedLevelIndexer extends NanoresourcePromise {
 
     const feedStream = this._source.stream(this._getFeedStart);
 
-    feedStream.once('synced', () => {
-      this._indexes.forEach(index => {
-        index.streams.forEach(stream => stream.emit('synced'));
+    // There is not prev state, first time index
+    if (this._feedState.length === 0) {
+      feedStream.once('synced', () => {
+        this._indexes.forEach(index => {
+          index.streams.forEach(stream => stream.emit('synced'));
+        });
       });
-    });
+    }
 
     this._stream = pumpify.obj(
       feedStream,

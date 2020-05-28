@@ -100,7 +100,7 @@ test('basic', async () => {
 
   const chatMessages = await waitForChatMessages;
   expect(chatMessages.sort()).toEqual([0, 1, 2, 3, 4]);
-  expect(synced).toBeCalledTimes(2);
+  expect(synced).toBeCalledTimes(1);
 
   const topic1Messages = await waitForTopic1Messages;
   expect(topic1Messages.sort()).toEqual([0, 1, 2]);

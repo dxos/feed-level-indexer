@@ -31,6 +31,10 @@ export class LevelCacheSeq extends NanoresourcePromise {
     this.open().catch(err => process.nextTick(() => this.emit('error', err)));
   }
 
+  get length () {
+    return this._valuesBySeq.length;
+  }
+
   get db () {
     return this._db;
   }
