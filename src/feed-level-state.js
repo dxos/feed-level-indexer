@@ -15,6 +15,10 @@ export class FeedLevelState extends LevelCacheSeq {
     this._waitingFeedsSync = new Set();
   }
 
+  get synced () {
+    return !this._feedStoreSyncState || this._waitingFeedsSync.size === 0;
+  }
+
   buildIncremental () {
     return through.obj((chunk, _, next) => {
       const { key } = chunk;

@@ -75,10 +75,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
     const readOptions = { ...levelOptions, gte, lte };
     const reader = live ? new Live(this._db, readOptions) : this._db.createReadStream(readOptions);
 
-    let hasData = false;
     const readFeedMessage = through.obj(async (chunk, _, next) => {
-      hasData = true;
-
       try {
         const [levelSeq, seq] = chunk.value;
         const { key } = this._feedState.getBySeq(levelSeq);
@@ -104,7 +101,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
     ]).then(() => {
       stream.setPipeline(reader, readFeedMessage);
       reader.once('sync', () => {
-        if (hasData) {
+        if (this._feedState.synced) {
           stream.emit('synced');
         }
       });
