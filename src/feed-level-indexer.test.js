@@ -79,7 +79,12 @@ test('basic', async () => {
   indexer.on('error', err => console.log(err));
   indexer.on('index-error', err => console.log(err));
 
-  const waitForChatMessages = waitForMessages(indexer.subscribe('TopicType', [topic2, 'message.Chat']), (messages) => {
+  const synced = jest.fn();
+
+  const chatStream = indexer.subscribe('TopicType', [topic2, 'message.Chat']);
+  chatStream.on('synced', synced);
+
+  const waitForChatMessages = waitForMessages(chatStream, (messages) => {
     return messages.length === 5;
   }, true);
 
@@ -95,6 +100,7 @@ test('basic', async () => {
 
   const chatMessages = await waitForChatMessages;
   expect(chatMessages.sort()).toEqual([0, 1, 2, 3, 4]);
+  expect(synced).toBeCalledTimes(2);
 
   const topic1Messages = await waitForTopic1Messages;
   expect(topic1Messages.sort()).toEqual([0, 1, 2]);
@@ -103,10 +109,12 @@ test('basic', async () => {
   expect(oddMessages.sort()).toEqual([0, 0, 2, 2, 4, 4]);
 
   const stream = indexer.subscribe('TopicType', [topic1], { feedLevelIndexInfo: true });
+
   const result = await new Promise(resolve => stream.on('data', data => {
     stream.destroy();
     resolve(data);
   }));
+
   expect(result).toEqual({
     key: feed1.key,
     seq: 0,

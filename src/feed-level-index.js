@@ -59,6 +59,10 @@ export class FeedLevelIndex extends NanoresourcePromise {
     return this._db;
   }
 
+  get streams () {
+    return Array.from(this._streams.values());
+  }
+
   createReadStream (levelKey, options = {}) {
     const { filter = () => true, live = false, feedLevelIndexInfo = false, ...levelOptions } = options;
 
@@ -96,7 +100,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
       this._feedState.open()
     ]).then(() => {
       stream.setPipeline(reader, readFeedMessage);
-      reader.on('sync', () => stream.emit('sync'));
+      reader.on('sync', () => stream.emit('synced'));
     }).catch((err) => {
       stream.destroy(err);
     });

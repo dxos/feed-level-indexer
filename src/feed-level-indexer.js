@@ -104,8 +104,16 @@ export class FeedLevelIndexer extends NanoresourcePromise {
       next();
     });
 
+    const feedStream = this._source.stream(this._getFeedStart);
+
+    feedStream.once('synced', () => {
+      this._indexes.forEach(index => {
+        index.streams.forEach(stream => stream.emit('synced'));
+      });
+    });
+
     this._stream = pumpify.obj(
-      this._source.stream(this._getFeedStart),
+      feedStream,
       this._feedState.buildIncremental(),
       buildPartitions,
       this._feedState.buildState(),
