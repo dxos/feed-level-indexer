@@ -42,7 +42,7 @@ export class FeedLevelState extends LevelCacheSeq {
         this._feedStoreSyncState = state;
         Object.keys(this._feedStoreSyncState).forEach(key => {
           const feedState = this.valuesByKey.get(key);
-          if (feedState && feedState.seq >= this._feedStoreSyncState[key]) {
+          if (feedState && feedState.value.start >= this._feedStoreSyncState[key]) {
             return;
           }
 
