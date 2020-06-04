@@ -2,17 +2,31 @@
 // Copyright 2020 Wireline, Inc.
 //
 
-const tempy = require('tempy');
-const Benchmarkify = require('benchmarkify');
 const pify = require('pify');
 const crypto = require('hypercore-crypto');
-const level = require('level');
+const level = require('level-mem');
 const eos = require('end-of-stream');
+const queueMicrotask = require('queue-microtask');
+
+if (typeof window !== 'undefined') {
+  process.nextTick = function (fn) {
+    var args = new Array(arguments.length - 1);
+    if (arguments.length > 1) {
+      for (var i = 1; i < arguments.length; i++) {
+        args[i - 1] = arguments[i];
+      }
+    }
+
+    queueMicrotask(() => fn(...args));
+  };
+}
 
 const { FeedStore } = require('@dxos/feed-store');
-const { FeedLevelIndexer } = require('..');
+const { Suite } = require('@dxos/benchmark-suite');
+const { createStorage } = require('@dxos/random-access-multi-storage');
+const { FeedLevelIndexer } = require('.');
 
-const DIRECTORY = tempy.directory();
+const DIRECTORY = '.benchmark';
 const MAX_FEEDS = 5;
 const MAX_TYPES = 5;
 const MAX_MESSAGES_BY_TYPE = 5000;
@@ -28,7 +42,7 @@ const topic = 'test-topic';
 const types = [...Array(MAX_TYPES).keys()].map(i => `Type${i}`);
 
 async function prepareFeeds () {
-  const feedStore = new FeedStore(`${DIRECTORY}/feeds`, { feedOptions: { valueEncoding: 'json' } });
+  const feedStore = new FeedStore(createStorage(`${DIRECTORY}`), { feedOptions: { valueEncoding: 'json' } });
   await feedStore.initialize();
 
   const feeds = await Promise.all([...Array(MAX_FEEDS).keys()].map((i) => feedStore.openFeed(`/feed${i}`, { metadata: { topic } })));
@@ -62,7 +76,7 @@ function getMessagesFromFeedStore (fs, type) {
 const createIndexer = async (fs) => {
   const source = {
     stream (getFeedStart) {
-      return fs.createReadStream(descriptor => {
+      return fs.createBatchStream(descriptor => {
         return { live: true, start: getFeedStart(descriptor.key), feedStoreInfo: true };
       });
     },
@@ -80,6 +94,8 @@ const createIndexer = async (fs) => {
   indexer.on('error', err => console.error(err));
 
   await indexer.open();
+
+  await new Promise(resolve => indexer.once('sync', resolve));
 
   return (type) => {
     return new Promise((resolve, reject) => {
@@ -100,28 +116,21 @@ const createIndexer = async (fs) => {
 // We test how long it takes to read messages from each type.
 // The first type has a considerable amount of messages to provide a real example.
 (async () => {
+  console.log(`Indexing ${MAX_MESSAGES_BY_TYPE * MAX_TYPES} messages from ${MAX_FEEDS} feeds\n`);
+
   const fs = await prepareFeeds();
+
   const getMessagesFromIndexer = await createIndexer(fs);
 
-  const benchmark = new Benchmarkify(`Indexing ${MAX_MESSAGES_BY_TYPE * MAX_TYPES} messages from ${MAX_FEEDS} feeds`).printHeader();
-
   for (const type of types) {
-    const bench = benchmark.createSuite(`Get messages from ${type}`, { minSamples: 1 });
+    const suite = new Suite();
+    console.log(`Get messages from ${type}\n`);
 
-    bench.add('Indexed messages', (done) => {
-      getMessagesFromIndexer(type).then(done).catch(err => {
-        console.error(err);
-        done();
-      });
-    });
+    suite.test('Indexed messages', () => getMessagesFromIndexer(type));
+    suite.test('FeedStore stream messages', () => getMessagesFromFeedStore(fs, type));
 
-    bench.ref('FeedStore stream messages', (done) => {
-      getMessagesFromFeedStore(fs, type).then(done).catch(err => {
-        console.error(err);
-        done();
-      });
-    });
+    const result = await suite.run();
 
-    await bench.run();
+    suite.print(result);
   }
 })();

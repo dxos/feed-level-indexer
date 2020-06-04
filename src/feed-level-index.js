@@ -8,8 +8,9 @@ import sub from 'subleveldown';
 import eos from 'end-of-stream';
 import Live from 'level-live';
 import { NanoresourcePromise } from 'nanoresource-promise/emitter';
+import bufferJson from 'buffer-json-encoding';
 
-import { codec } from './codec';
+import { batchPut } from './batch-put';
 
 export const defaultKeyReducer = (fields) => {
   fields = fields.map(field => [field.split('.')]);
@@ -46,10 +47,12 @@ export class FeedLevelIndex extends NanoresourcePromise {
 
     const { db, name, keyReducer, feedState, getMessage } = options;
 
-    this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: codec });
+    this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: bufferJson });
+    this._name = name;
     this._keyReduce = Array.isArray(keyReducer) ? defaultKeyReducer(keyReducer) : keyReducer;
     this._feedState = feedState;
     this._getMessage = (key, seq) => getMessage(key, seq);
+    this._batchPut = batchPut(this._db);
     this._streams = new Set();
     this._separator = '!';
     this._separatorBuf = Buffer.from(this._separator);
@@ -59,6 +62,10 @@ export class FeedLevelIndex extends NanoresourcePromise {
 
   get db () {
     return this._db;
+  }
+
+  get name () {
+    return this._name;
   }
 
   get streams () {
@@ -79,19 +86,20 @@ export class FeedLevelIndex extends NanoresourcePromise {
 
     const readFeedMessage = through.obj(async (chunk, _, next) => {
       try {
-        const [levelSeq, seq] = chunk.value;
-        const { key } = this._feedState.getBySeq(levelSeq);
-        const data = await this._getMessage(key, seq);
-        const valid = await filter(data);
+        const data = chunk.value;
+        const state = this._feedState.get(data.key);
+        data.levelSeq = state.seq;
+        data.levelKey = chunk.key;
+        const valid = await filter(data.data);
         if (valid) {
           if (feedLevelIndexInfo) {
-            next(null, { key, seq, levelKey: chunk.key, levelSeq, data });
-          } else {
-            next(null, data);
+            return next(null, data);
           }
-        } else {
-          next();
+
+          return next(null, data.data);
         }
+
+        next();
       } catch (err) {
         next(err);
       }
@@ -103,8 +111,8 @@ export class FeedLevelIndex extends NanoresourcePromise {
     ]).then(() => {
       stream.setPipeline(reader, readFeedMessage);
       reader.once('sync', () => {
-        if (this._feedState.synced) {
-          stream.emit('synced');
+        if (this._feedState.sync) {
+          stream.emit('sync');
         }
       });
     }).catch((err) => {
@@ -119,22 +127,16 @@ export class FeedLevelIndex extends NanoresourcePromise {
     return stream;
   }
 
-  async add (chunk) {
+  async add (chunk, batch = true) {
     await this.open();
-    const { key, seq } = chunk;
 
+    const { data, key, seq } = chunk;
     const state = this._feedState.get(key);
-
-    let dbKey = null;
-    try {
-      dbKey = this._keyReduce(chunk, state);
-      dbKey = this._encodeKey(dbKey);
-      await this._db.get(dbKey);
-    } catch (err) {
-      if (err.notFound) {
-        return this._db.put(dbKey, [state.seq, seq]);
-      }
+    const dbKey = this._encodeKey(this._keyReduce(chunk, state));
+    if (batch) {
+      return this._batchPut(dbKey, { data, key, seq });
     }
+    return this._db.put(dbKey, { data, key, seq });
   }
 
   async open () {

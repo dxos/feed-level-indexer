@@ -107,3 +107,5 @@ example/dist
 example/.cache
 example/yarn.lock
 example/package-lock.json
+
+.benchmark

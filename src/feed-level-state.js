@@ -12,33 +12,35 @@ export class FeedLevelState extends LevelCacheSeq {
 
     this._feedStream = null;
     this._feedStoreSyncState = null;
-    this._synced = false;
+    this._sync = false;
     this._waitingFeedsSync = new Set();
   }
 
-  get synced () {
-    return this._synced;
+  get sync () {
+    return this._sync;
   }
 
   buildIncremental () {
-    return through.obj((chunk, _, next) => {
-      const { key } = chunk;
+    return through.obj((messages, _, next) => {
+      Promise.all(messages.map(message => {
+        const { key } = message;
 
-      if (this.get(key)) {
-        return next(null, chunk);
-      }
+        if (this.get(key)) {
+          return;
+        }
 
-      this.set(key, { start: 0 })
-        .then(() => next(null, chunk))
+        return this.set(key, { start: 0 }, messages.length > 1);
+      }))
+        .then(() => next(null, messages))
         .catch(err => next(err));
     });
   }
 
   buildState (feedStream) {
     if (this.length === 0 && this._feedStoreSyncState === null) {
-      // First build use the feedStore state to know when is synced
+      // First build use the feedStore state to know when is sync
       this._feedStoreSyncState = {};
-      feedStream.once('synced', state => {
+      feedStream.once('sync', state => {
         this._feedStoreSyncState = state;
         Object.keys(this._feedStoreSyncState).forEach(key => {
           const feedState = this.valuesByKey.get(key);
@@ -50,36 +52,37 @@ export class FeedLevelState extends LevelCacheSeq {
         });
 
         if (this._waitingFeedsSync.size === 0) {
-          this._synced = true;
-          process.nextTick(() => this.emit('synced'));
+          this._sync = true;
+          process.nextTick(() => this.emit('sync'));
         }
       });
     } else {
-      this._synced = true;
+      this._sync = true;
     }
 
-    return through.obj((chunk, _, next) => {
-      const { key, seq } = chunk;
+    return through.obj((messages, _, next) => {
+      Promise.all(messages.map(message => {
+        const { key, seq } = message;
 
-      this.set(key, { start: seq + 1 })
-        .then(() => {
-          if (this._waitingFeedsSync.size === 0) {
-            return next(null, chunk);
-          }
-
-          const strKey = key.toString('hex');
-          const feedStateSeq = this._feedStoreSyncState[strKey];
-
-          if ((feedStateSeq !== undefined) && (seq >= feedStateSeq)) {
-            this._waitingFeedsSync.delete(strKey);
+        return this.set(key, { start: seq + 1 }, messages.length > 1)
+          .then(() => {
             if (this._waitingFeedsSync.size === 0) {
-              this._synced = true;
-              process.nextTick(() => this.emit('synced'));
+              return;
             }
-          }
 
-          next(null, chunk);
-        })
+            const strKey = key.toString('hex');
+            const feedStateSeq = this._feedStoreSyncState[strKey];
+
+            if ((feedStateSeq !== undefined) && (seq >= feedStateSeq)) {
+              this._waitingFeedsSync.delete(strKey);
+              if (this._waitingFeedsSync.size === 0) {
+                this._sync = true;
+                process.nextTick(() => this.emit('sync'));
+              }
+            }
+          });
+      }))
+        .then(() => next(null, messages))
         .catch(err => next(err));
     });
   }

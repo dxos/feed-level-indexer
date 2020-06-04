@@ -6,6 +6,7 @@ import sub from 'subleveldown';
 import { NanoresourcePromise } from 'nanoresource-promise/emitter';
 
 import { codec } from './codec';
+import { batchPut } from './batch-put';
 
 const bufToStr = buf => Buffer.isBuffer(buf) ? buf.toString('hex') : buf;
 
@@ -20,6 +21,7 @@ export class LevelCacheSeq extends NanoresourcePromise {
     if (options.encode) this._encode = options.encode;
     if (options.decode) this._decode = options.decode;
 
+    this._batchPut = batchPut(this._db);
     this._valuesBySeq = [];
     this._valuesByKey = new Map();
 
@@ -50,7 +52,7 @@ export class LevelCacheSeq extends NanoresourcePromise {
   /**
    * @async
    */
-  async set (key, value) {
+  async set (key, value, batch = true) {
     await this.open();
 
     const keyStr = bufToStr(key);
@@ -62,7 +64,14 @@ export class LevelCacheSeq extends NanoresourcePromise {
     });
 
     // TODO: Removed extra separator. Solution for now until subleveldown fix buffer keys issue.
-    return this._db.put(Buffer.concat([SEP, key, SEP], key.length + 2), [newValue.seq].concat(this._encode(key, newValue.value)));
+    const lKey = Buffer.concat([SEP, key, SEP], key.length + 2);
+    const lValue = [newValue.seq].concat(this._encode(key, newValue.value));
+
+    if (batch) {
+      return this._batchPut(lKey, lValue);
+    }
+
+    return this._db.put(lKey, lValue);
   }
 
   getBySeq (seq) {

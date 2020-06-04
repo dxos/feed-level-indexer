@@ -15,7 +15,7 @@ import { FeedLevelIndexer } from './feed-level-indexer';
 const createIndexer = async (db, fs) => {
   const source = {
     stream (getFeedStart) {
-      return fs.createReadStream(descriptor => {
+      return fs.createBatchStream(descriptor => {
         return { live: true, start: getFeedStart(descriptor.key), feedStoreInfo: true };
       });
     },
@@ -80,11 +80,11 @@ test('basic', async () => {
   indexer.on('index-error', err => console.log(err));
 
   const chatStream = indexer.subscribe('TopicType', [topic2, 'message.Chat']);
-  const waitForSync = new Promise(resolve => chatStream.once('synced', resolve));
+  const waitForSync = new Promise(resolve => chatStream.once('sync', resolve));
 
   const waitForChatMessages = waitForMessages(chatStream, (messages) => {
     return messages.length === 5;
-  }, true);
+  }, false);
 
   const waitForTopic1Messages = waitForMessages(indexer.subscribe('TopicType', [topic1]), (messages) => {
     return messages.length === 3;
@@ -98,7 +98,8 @@ test('basic', async () => {
 
   const chatMessages = await waitForChatMessages;
   expect(chatMessages.sort()).toEqual([0, 1, 2, 3, 4]);
-  expect(waitForSync).resolves.toBeUndefined();
+  await expect(waitForSync).resolves.toBeUndefined();
+  chatStream.destroy();
 
   const topic1Messages = await waitForTopic1Messages;
   expect(topic1Messages.sort()).toEqual([0, 1, 2]);

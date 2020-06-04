@@ -84,14 +84,16 @@ export class FeedLevelIndexer extends NanoresourcePromise {
   async _open () {
     await this._feedState.open();
 
-    const buildPartitions = through.obj(async (chunk, _, next) => {
+    const buildPartitions = through.obj(async (messages, _, next) => {
       Promise.all(Array.from(this._indexes.values()).map((index, indexName) => {
-        return index.add(chunk).catch(err => {
-          this.emit('index-error', err, indexName, chunk);
-        });
+        return Promise.all(messages.map(message => {
+          return index.add(message, messages.lenght > 1).catch(err => {
+            this.emit('index-error', err, indexName, message);
+          });
+        }));
       }))
         .then(() => {
-          next(null, chunk);
+          next(null, messages);
         })
         .catch(err => {
           process.nextTick(() => next(err));
@@ -107,10 +109,13 @@ export class FeedLevelIndexer extends NanoresourcePromise {
     const feedStream = this._source.stream(this._getFeedStart);
 
     // There is not prev state, first time index
-    this._feedState.once('synced', () => {
+    this._feedState.once('sync', () => {
       this._indexes.forEach(index => {
-        index.streams.forEach(stream => stream.emit('synced'));
+        index.streams.forEach(stream => {
+          stream.emit('sync');
+        });
       });
+      this.emit('sync');
     });
 
     this._stream = pumpify.obj(
