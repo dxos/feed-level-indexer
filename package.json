@@ -39,10 +39,10 @@
   },
   "dependencies": {
     "@babel/runtime": "^7.8.7",
+    "@frando/level-live": "^1.1.0",
     "buffer-json-encoding": "^1.0.2",
     "debug": "^4.1.1",
     "end-of-stream": "^1.4.4",
-    "level-live": "github:Frando/level-live#key-encodings",
     "nanoresource-promise": "^v2.0.0-beta.2",
     "p-limit": "^2.3.0",
     "pumpify": "^2.0.1",

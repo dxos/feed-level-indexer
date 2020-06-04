@@ -6,7 +6,7 @@ import through from 'through2';
 import pumpify from 'pumpify';
 import sub from 'subleveldown';
 import eos from 'end-of-stream';
-import Live from 'level-live';
+import Live from '@frando/level-live';
 import { NanoresourcePromise } from 'nanoresource-promise/emitter';
 import bufferJson from 'buffer-json-encoding';
 
@@ -105,18 +105,12 @@ export class FeedLevelIndex extends NanoresourcePromise {
       }
     });
 
-    Promise.all([
-      this.open(),
-      this._feedState.open()
-    ]).then(() => {
-      stream.setPipeline(reader, readFeedMessage);
-      reader.once('sync', () => {
-        if (this._feedState.sync) {
-          stream.emit('sync');
-        }
-      });
-    }).catch((err) => {
-      stream.destroy(err);
+    stream.setPipeline(reader, readFeedMessage);
+
+    reader.once('sync', () => {
+      if (this._feedState.sync) {
+        stream.emit('sync');
+      }
     });
 
     eos(stream, () => {
@@ -124,6 +118,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
     });
 
     this._streams.add(stream);
+
     return stream;
   }
 
