@@ -73,7 +73,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
   }
 
   createReadStream (levelKey, options = {}) {
-    const { filter = () => true, live = false, feedLevelIndexInfo = false, ...levelOptions } = options;
+    const { filter = () => true, live = false, ...levelOptions } = options;
 
     const gte = this._encodeKey(levelKey);
     const sliceBuf = gte.slice(0, -1);
@@ -92,11 +92,7 @@ export class FeedLevelIndex extends NanoresourcePromise {
         data.levelKey = chunk.key;
         const valid = await filter(data.data);
         if (valid) {
-          if (feedLevelIndexInfo) {
-            return next(null, data);
-          }
-
-          return next(null, data.data);
+          return next(null, data);
         }
 
         next();

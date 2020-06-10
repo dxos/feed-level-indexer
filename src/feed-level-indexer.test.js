@@ -39,7 +39,7 @@ const createIndexer = async (db, fs) => {
 const waitForMessages = (stream, condition, destroy = false) => {
   return new Promise(resolve => {
     const messages = [];
-    stream.on('data', data => {
+    stream.on('data', ({ data }) => {
       messages.push(data.msg);
       if (condition(messages, data)) {
         if (destroy) stream.destroy();
