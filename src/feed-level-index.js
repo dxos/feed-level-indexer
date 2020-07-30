@@ -45,13 +45,12 @@ export class FeedLevelIndex extends NanoresourcePromise {
   constructor (options = {}) {
     super();
 
-    const { db, name, keyReducer, feedState, getMessage } = options;
+    const { db, name, keyReducer, feedState } = options;
 
     this._db = sub(db, name, { keyEncoding: 'binary', valueEncoding: bufferJson });
     this._name = name;
     this._keyReduce = Array.isArray(keyReducer) ? defaultKeyReducer(keyReducer) : keyReducer;
     this._feedState = feedState;
-    this._getMessage = (key, seq) => getMessage(key, seq);
     this._batchPut = batchPut(this._db);
     this._streams = new Set();
     this._separator = '!';

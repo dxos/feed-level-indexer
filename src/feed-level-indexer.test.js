@@ -18,12 +18,6 @@ const createIndexer = async (db, fs) => {
       return fs.createBatchStream(descriptor => {
         return { live: true, start: getFeedStart(descriptor.key), feedStoreInfo: true };
       });
-    },
-    async get (key, seq) {
-      const descriptor = fs.getDescriptorByDiscoveryKey(crypto.discoveryKey(key));
-      if (!descriptor) throw new Error('missing descriptor');
-      const feed = descriptor.opened ? descriptor.feed : await descriptor.open();
-      return pify(feed.get.bind(feed))(seq);
     }
   };
 

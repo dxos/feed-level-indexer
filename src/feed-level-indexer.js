@@ -19,7 +19,6 @@ export class FeedLevelIndexer extends NanoresourcePromise {
     assert(db && db.supports, 'db is required and must be a compatible levelup database');
     assert(source, 'source is required');
     assert(typeof source.stream === 'function', 'source.stream is required');
-    assert(typeof source.get === 'function', 'source.get is required');
 
     this._db = db;
     this._source = source;
@@ -53,8 +52,7 @@ export class FeedLevelIndexer extends NanoresourcePromise {
       db: this._db,
       name: indexName,
       keyReducer,
-      feedState: this._feedState,
-      getMessage: this._source.get
+      feedState: this._feedState
     }));
 
     return this;
